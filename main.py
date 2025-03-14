@@ -911,11 +911,15 @@ async def battle_yes(ctx):
     }
 
     del battle_requests[user_id]
-    
+
+    # 確認用のログを出力
+    print(f"Battle started between {challenger_id} and {user_id} in channel {battle_id}")
+
     # 両プレイヤーにポケモン選択を促す
     await ctx.send(f"{bot.get_user(int(challenger_id)).mention} と {ctx.author.mention} のバトルが開始されました！\n"
                    f"まずはお互いのポケモンを選んでください。\n"
                    f"`p!send <ポケモン名>` で使用するポケモンを出してください。")
+
 
 @bot.command()
 async def send(ctx, pokemon_name: str):
