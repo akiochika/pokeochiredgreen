@@ -903,6 +903,7 @@ async def battle_yes(ctx):
     challenger_id = battle_requests[user_id]["challenger_id"]
     battle_id = str(ctx.channel.id)
 
+    # バトルデータを作成
     active_battles[battle_id] = {
         "player1": {"id": challenger_id, "team": player_data[challenger_id]["team"], "active_pokemon": None},
         "player2": {"id": user_id, "team": player_data[user_id]["team"], "active_pokemon": None},
@@ -910,8 +911,11 @@ async def battle_yes(ctx):
     }
 
     del battle_requests[user_id]
-    await ctx.send(f"{bot.get_user(int(challenger_id)).mention} と {ctx.author.mention} のバトルが始まる！"
-                   f"ポケモンを選んでください (`p!send <ポケモン名>`)。")
+    
+    # 両プレイヤーにポケモン選択を促す
+    await ctx.send(f"{bot.get_user(int(challenger_id)).mention} と {ctx.author.mention} のバトルが開始されました！\n"
+                   f"まずはお互いのポケモンを選んでください。\n"
+                   f"`p!send <ポケモン名>` で使用するポケモンを出してください。")
 
 @bot.command()
 async def send(ctx, pokemon_name: str):
@@ -938,6 +942,7 @@ async def send(ctx, pokemon_name: str):
     battle[player]["active_pokemon"] = chosen_pokemon
     await ctx.send(f"{ctx.author.mention} は {pokemon_name} を繰り出した！")
 
+    # 両プレイヤーがポケモンを出したらターン順を決定
     if battle["player1"]["active_pokemon"] and battle["player2"]["active_pokemon"]:
         await determine_turn_order(ctx, battle_id)
 
@@ -946,10 +951,15 @@ async def determine_turn_order(ctx, battle_id):
     p1, p2 = battle["player1"], battle["player2"]
     p1_pokemon, p2_pokemon = p1["active_pokemon"], p2["active_pokemon"]
 
-    battle["turn"] = "player1" if p1_pokemon["speed"] > p2_pokemon["speed"] else "player2"
+    # 先攻後攻の決定
+    if p1_pokemon["speed"] > p2_pokemon["speed"]:
+        battle["turn"] = "player1"
+    else:
+        battle["turn"] = "player2"
     
     await ctx.send(f"バトル開始！ {battle[battle['turn']]['active_pokemon']['name']} が先攻！")
     await start_turn(ctx, battle_id)
+
 
 async def start_turn(ctx, battle_id):
     battle = active_battles[battle_id]
