@@ -763,6 +763,90 @@ async def reset_player(ctx, member: discord.Member):
     else:
         await ctx.send(f'{member.mention} のプレイヤーデータは見つかりませんでした。')
 
+# 交換リクエストを管理する辞書
+trade_requests = {}
+
+@bot.command()
+async def trade(ctx, member: discord.Member, my_pokemon_name: str, their_pokemon_name: str):
+    user_id = str(ctx.author.id)
+    target_id = str(member.id)
+
+    # 自分と相手のデータが存在するか確認
+    if user_id not in player_data or target_id not in player_data:
+        await ctx.send("どちらかのプレイヤーデータが見つかりません。")
+        return
+
+    # 自分のポケモンが手持ちにいるか確認
+    my_pokemon = next((p for p in player_data[user_id]["team"] if p["name"].lower() == my_pokemon_name.lower()), None)
+    if not my_pokemon:
+        await ctx.send(f"{ctx.author.mention} の手持ちに {my_pokemon_name} はいません。")
+        return
+
+    # 相手のポケモンが手持ちにいるか確認
+    their_pokemon = next((p for p in player_data[target_id]["team"] if p["name"].lower() == their_pokemon_name.lower()), None)
+    if not their_pokemon:
+        await ctx.send(f"{member.mention} の手持ちに {their_pokemon_name} はいません。")
+        return
+
+    # 交換リクエストを保存
+    trade_requests[target_id] = {
+        "requester_id": user_id,
+        "requester_pokemon": my_pokemon_name,
+        "target_pokemon": their_pokemon_name
+    }
+
+    await ctx.send(f"{member.mention} に交換リクエストを送りました！\n"
+                   f"交換内容: {ctx.author.mention} の **{my_pokemon_name}** ⇔ {member.mention} の **{their_pokemon_name}**\n"
+                   f"{member.mention} は `p!trade_yes` で承諾、 `p!trade_no` で拒否してください。")
+
+@bot.command()
+async def trade_yes(ctx):
+    user_id = str(ctx.author.id)
+
+    # 交換リクエストがあるか確認
+    if user_id not in trade_requests:
+        await ctx.send(f"{ctx.author.mention} に対する交換リクエストはありません。")
+        return
+
+    request = trade_requests[user_id]
+    requester_id = request["requester_id"]
+    my_pokemon_name = request["target_pokemon"]
+    their_pokemon_name = request["requester_pokemon"]
+
+    # 交換するポケモンを特定
+    my_pokemon = next((p for p in player_data[user_id]["team"] if p["name"].lower() == my_pokemon_name.lower()), None)
+    their_pokemon = next((p for p in player_data[requester_id]["team"] if p["name"].lower() == their_pokemon_name.lower()), None)
+
+    # どちらかがポケモンを失った場合はキャンセル
+    if not my_pokemon or not their_pokemon:
+        await ctx.send("交換しようとしたポケモンがどちらかの手持ちに存在しません。交換がキャンセルされました。")
+        del trade_requests[user_id]
+        return
+
+    # 交換処理
+    player_data[user_id]["team"].remove(my_pokemon)
+    player_data[requester_id]["team"].remove(their_pokemon)
+
+    player_data[user_id]["team"].append(their_pokemon)
+    player_data[requester_id]["team"].append(my_pokemon)
+
+    # データ保存
+    save_player_data()
+    del trade_requests[user_id]
+
+    await ctx.send(f"{bot.get_user(int(requester_id)).mention} と {ctx.author.mention} がポケモンを交換しました！\n"
+                   f"{bot.get_user(int(requester_id)).mention} の {their_pokemon_name} ⇔ {ctx.author.mention} の {my_pokemon_name}")
+
+@bot.command()
+async def trade_no(ctx):
+    user_id = str(ctx.author.id)
+
+    if user_id in trade_requests:
+        del trade_requests[user_id]
+        await ctx.send(f"{ctx.author.mention} は交換を拒否しました。")
+    else:
+        await ctx.send(f"{ctx.author.mention} に対する交換リクエストはありません。")
+
 @reset_player.error
 async def reset_player_error(ctx, error):
     if isinstance(error, CheckFailure):
