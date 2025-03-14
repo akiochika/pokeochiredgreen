@@ -7,6 +7,7 @@ import asyncio
 from datetime import timedelta
 from discord.ext.commands import has_permissions, CheckFailure
 import time
+from skilllist import get_skill_damage
 
 
 from skilllist import get_skill_damage  # 追加
@@ -907,39 +908,70 @@ async def battle_yes(ctx):
         return
 
     challenger_id = battle_requests[user_id]["challenger_id"]
+    battle_id = str(ctx.channel.id)
 
-    # バトル情報を作成
-    active_battles[str(ctx.channel.id)] = {
-        "player1": {"id": challenger_id, "team": player_data[challenger_id]["team"], "active_pokemon": 0},
-        "player2": {"id": user_id, "team": player_data[user_id]["team"], "active_pokemon": 0},
+    active_battles[battle_id] = {
+        "player1": {"id": challenger_id, "team": player_data[challenger_id]["team"], "active_pokemon": None},
+        "player2": {"id": user_id, "team": player_data[user_id]["team"], "active_pokemon": None},
         "turn": None
     }
 
-    # バトルリクエストを削除
     del battle_requests[user_id]
+    await ctx.send(f"{bot.get_user(int(challenger_id)).mention} と {ctx.author.mention} のバトルが始まる！
+ポケモンを出してください (`p!send <ポケモン名>`)。")
 
-    await ctx.send(f"{bot.get_user(int(challenger_id)).mention} と {ctx.author.mention} のバトルが始まる！")
+@bot.command()
+async def send(ctx, pokemon_name: str):
+    user_id = str(ctx.author.id)
+    battle_id = str(ctx.channel.id)
+    
+    if battle_id not in active_battles:
+        await ctx.send("現在バトルが進行していません！")
+        return
+    
+    battle = active_battles[battle_id]
+    player = "player1" if battle["player1"]["id"] == user_id else "player2"
+    
+    if battle[player]["active_pokemon"] is not None:
+        await ctx.send(f"{ctx.author.mention} は既にポケモンを出しています！")
+        return
+    
+    chosen_pokemon = next((p for p in battle[player]["team"] if p["name"].lower() == pokemon_name.lower() and p["hp"] > 0), None)
+    
+    if not chosen_pokemon:
+        await ctx.send(f"{ctx.author.mention} の手持ちに {pokemon_name} はいません！")
+        return
+    
+    battle[player]["active_pokemon"] = chosen_pokemon
+    await ctx.send(f"{ctx.author.mention} は {pokemon_name} を繰り出した！")
+    
+    if battle["player1"]["active_pokemon"] and battle["player2"]["active_pokemon"]:
+        await determine_turn_order(ctx, battle_id)
 
-    # 先攻を決める
-    await determine_turn_order(ctx, str(ctx.channel.id))
+async def determine_turn_order(ctx, battle_id):
+    battle = active_battles[battle_id]
+    player1_pokemon = battle["player1"]["active_pokemon"]
+    player2_pokemon = battle["player2"]["active_pokemon"]
 
-    # 3分間バトルが進まなかったら終了
-    bot.loop.create_task(battle_timeout(ctx, str(ctx.channel.id)))
-
-import time  # 既にインポート済みなら不要
+    if player1_pokemon["speed"] > player2_pokemon["speed"]:
+        battle["turn"] = "player1"
+    else:
+        battle["turn"] = "player2"
+    
+    await ctx.send(f"バトル開始！ {battle[battle['turn']]['active_pokemon']['name']} が先攻！")
+    await start_turn(ctx, battle_id)
 
 async def start_turn(ctx, battle_id):
     battle = active_battles[battle_id]
     player = battle["turn"]
     user_id = battle[player]["id"]
-    pokemon = battle[player]["team"][battle[player]["active_pokemon"]]
+    pokemon = battle[player]["active_pokemon"]
 
-    battle["last_action_time"] = time.time()  # 最終行動時間を更新
-
+    battle["last_action_time"] = time.time()
     moves = ', '.join(pokemon["moves"])
-    await ctx.send(f"{bot.get_user(int(user_id)).mention} のターンです！\n"
-                   f"使用できる技: {moves}\n"
-                   f"`p!use 技名` で攻撃するか、`p!switch ポケモン名` で交代してください。")
+    await ctx.send(f"{bot.get_user(int(user_id)).mention} のターン！
+使用できる技: {moves}
+`p!use <技名>` で攻撃するか、`p!switch <ポケモン名>` で交代してください。")
 
 @bot.command()
 async def use(ctx, move_name: str):
