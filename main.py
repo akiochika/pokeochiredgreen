@@ -901,164 +901,6 @@ async def battle(ctx, member: discord.Member):
 async def battle_yes(ctx):
     user_id = str(ctx.author.id)
 
-    # 申し込みがあるか確認
-    if user_id not in battle_requests:
-        await ctx.send(f"{ctx.author.mention} に対するバトルリクエストはありません。")
-        return
-
-    challenger_id = battle_requests[user_id]["challenger_id"]
-
-    # バトル情報を作成
-    active_battles[user_id] = {
-        "player1": {"id": challenger_id, "team": player_data[challenger_id]["team"], "active_pokemon": 0},
-        "player2": {"id": user_id, "team": player_data[user_id]["team"], "active_pokemon": 0},
-        "turn": None  # どちらのターンか決める
-    }
-
-    # バトルリクエストを削除
-    del battle_requests[user_id]
-
-    await ctx.send(f"{bot.get_user(int(challenger_id)).mention} と {ctx.author.mention} のバトルが始まる！")
-
-    # 先攻を決める
-    await determine_turn_order(ctx, user_id)
-
-async def determine_turn_order(ctx, battle_id):
-    battle = active_battles[battle_id]
-    p1_pokemon = battle["player1"]["team"][battle["player1"]["active_pokemon"]]
-    p2_pokemon = battle["player2"]["team"][battle["player2"]["active_pokemon"]]
-
-    if p1_pokemon["speed"] > p2_pokemon["speed"]:
-        battle["turn"] = "player1"
-    elif p2_pokemon["speed"] > p1_pokemon["speed"]:
-        battle["turn"] = "player2"
-    else:
-        battle["turn"] = random.choice(["player1", "player2"])
-
-    await ctx.send(f"先攻は {bot.get_user(int(battle[battle['turn']]['id'])).mention} です！")
-    await start_turn(ctx, battle_id)
-
-async def start_turn(ctx, battle_id):
-    battle = active_battles[battle_id]
-    player = battle["turn"]
-    user_id = battle[player]["id"]
-    pokemon = battle[player]["team"][battle[player]["active_pokemon"]]
-
-    moves = ', '.join(pokemon["moves"])
-    await ctx.send(f"{bot.get_user(int(user_id)).mention} のターンです！\n"
-                   f"使用できる技: {moves}\n"
-                   f"`p!use 技名` で攻撃するか、`p!switch ポケモン名` で交代してください。")
-
-@bot.command()
-async def use(ctx, move_name: str):
-    user_id = str(ctx.author.id)
-
-    # バトル中か確認
-    battle_id = next((b for b in active_battles if user_id in [active_battles[b]["player1"]["id"], active_battles[b]["player2"]["id"]]), None)
-    if not battle_id:
-        await ctx.send("あなたは現在バトルをしていません。")
-        return
-
-    battle = active_battles[battle_id]
-
-    # 自分のターンか確認
-    player = battle["turn"]
-    if battle[player]["id"] != user_id:
-        await ctx.send("今はあなたのターンではありません！")
-        return
-
-    attacker = battle[player]["team"][battle[player]["active_pokemon"]]
-    opponent = battle["player1"] if player == "player2" else battle["player2"]
-    defender = opponent["team"][opponent["active_pokemon"]]
-
-    if move_name not in attacker["moves"]:
-        await ctx.send(f"{attacker['name']} は {move_name} を覚えていません！")
-        return
-
-    # ダメージ計算
-    damage = get_skill_damage(move_name, attacker, defender)
-    defender["hp"] = max(0, defender["hp"] - damage)
-
-    await ctx.send(f"{attacker['name']} の {move_name}！ {defender['name']} に {damage} ダメージ！\n"
-                   f"残りHP: {defender['hp']}/{defender['max_hp']}")
-
-    # 相手のポケモンが倒れたか確認
-    if defender["hp"] == 0:
-        await ctx.send(f"{defender['name']} は倒れた！")
-        next_pokemon = next((i for i, p in enumerate(opponent["team"]) if p["hp"] > 0), None)
-        if next_pokemon is None:
-            await ctx.send(f"{bot.get_user(int(battle[player]['id'])).mention} の勝利！")
-            del active_battles[battle_id]
-            return
-        else:
-            opponent["active_pokemon"] = next_pokemon
-            await ctx.send(f"{bot.get_user(int(opponent['id'])).mention} は {opponent['team'][next_pokemon]['name']} を繰り出した！")
-
-    # ターン交代
-    battle["turn"] = "player1" if player == "player2" else "player2"
-    await start_turn(ctx, battle_id)
-
-@bot.command()
-async def switch(ctx, pokemon_name: str):
-    user_id = str(ctx.author.id)
-
-    # バトル中か確認
-    battle_id = next((b for b in active_battles if user_id in [active_battles[b]["player1"]["id"], active_battles[b]["player2"]["id"]]), None)
-    if not battle_id:
-        await ctx.send("あなたは現在バトルをしていません。")
-        return
-
-    battle = active_battles[battle_id]
-
-    # 自分のターンか確認
-    player = battle["turn"]
-    if battle[player]["id"] != user_id:
-        await ctx.send("今はあなたのターンではありません！")
-        return
-
-    # 交代可能か確認
-    new_pokemon_index = next((i for i, p in enumerate(battle[player]["team"]) if p["name"].lower() == pokemon_name.lower() and p["hp"] > 0), None)
-    if new_pokemon_index is None:
-        await ctx.send(f"{pokemon_name} は交代できません！")
-        return
-
-    battle[player]["active_pokemon"] = new_pokemon_index
-    await ctx.send(f"{ctx.author.mention} は {pokemon_name} に交代した！")
-
-    # ターン交代
-    battle["turn"] = "player1" if player == "player2" else "player2"
-    await start_turn(ctx, battle_id)
-
-async def end_battle(ctx, battle_id, winner_id=None):
-    battle = active_battles[battle_id]
-
-    # バトル終了メッセージ
-    if winner_id:
-        await ctx.send(f"{bot.get_user(int(winner_id)).mention} の勝利！")
-    else:
-        await ctx.send("バトルがタイムアウトしました。")
-
-    # 両プレイヤーのポケモンを回復
-    for player in ["player1", "player2"]:
-        user_id = battle[player]["id"]
-        for pokemon in battle[player]["team"]:
-            pokemon["hp"] = pokemon["max_hp"]  # HP全回復
-
-    # バトルデータ削除
-    del active_battles[battle_id]
-
-    # データを保存
-    save_player_data()
-
-async def battle_timeout(ctx, battle_id):
-    await asyncio.sleep(180)  # 3分待機
-    if battle_id in active_battles:
-        await end_battle(ctx, battle_id)  # 自動終了
-
-@bot.command()
-async def battle_yes(ctx):
-    user_id = str(ctx.author.id)
-
     if user_id not in battle_requests:
         await ctx.send(f"{ctx.author.mention} に対するバトルリクエストはありません。")
         return
@@ -1141,6 +983,63 @@ async def use(ctx, move_name: str):
 
     battle["turn"] = "player1" if player == "player2" else "player2"
     await start_turn(ctx, battle_id)
+
+@bot.command()
+async def switch(ctx, pokemon_name: str):
+    user_id = str(ctx.author.id)
+
+    # バトル中か確認
+    battle_id = next((b for b in active_battles if user_id in [active_battles[b]["player1"]["id"], active_battles[b]["player2"]["id"]]), None)
+    if not battle_id:
+        await ctx.send("あなたは現在バトルをしていません。")
+        return
+
+    battle = active_battles[battle_id]
+
+    # 自分のターンか確認
+    player = battle["turn"]
+    if battle[player]["id"] != user_id:
+        await ctx.send("今はあなたのターンではありません！")
+        return
+
+    # 交代可能か確認
+    new_pokemon_index = next((i for i, p in enumerate(battle[player]["team"]) if p["name"].lower() == pokemon_name.lower() and p["hp"] > 0), None)
+    if new_pokemon_index is None:
+        await ctx.send(f"{pokemon_name} は交代できません！")
+        return
+
+    battle[player]["active_pokemon"] = new_pokemon_index
+    await ctx.send(f"{ctx.author.mention} は {pokemon_name} に交代した！")
+
+    # ターン交代
+    battle["turn"] = "player1" if player == "player2" else "player2"
+    await start_turn(ctx, battle_id)
+
+async def end_battle(ctx, battle_id, winner_id=None):
+    battle = active_battles[battle_id]
+
+    # バトル終了メッセージ
+    if winner_id:
+        await ctx.send(f"{bot.get_user(int(winner_id)).mention} の勝利！")
+    else:
+        await ctx.send("バトルがタイムアウトしました。")
+
+    # 両プレイヤーのポケモンを回復
+    for player in ["player1", "player2"]:
+        user_id = battle[player]["id"]
+        for pokemon in battle[player]["team"]:
+            pokemon["hp"] = pokemon["max_hp"]  # HP全回復
+
+    # バトルデータ削除
+    del active_battles[battle_id]
+
+    # データを保存
+    save_player_data()
+
+async def battle_timeout(ctx, battle_id):
+    await asyncio.sleep(180)  # 3分待機
+    if battle_id in active_battles:
+        await end_battle(ctx, battle_id)  # 自動終了
 
 
 @reset_player.error
