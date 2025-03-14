@@ -972,9 +972,19 @@ async def start_turn(ctx, battle_id):
     pokemon = battle[player]["active_pokemon"]
 
     moves = ', '.join(pokemon["moves"])
-    await ctx.send(f"{bot.get_user(int(user_id)).mention} のターン！\n"
-                   f"技: {moves}\n"
-                   f"`p!use <技名>` で攻撃、`p!switch <ポケモン名>` で交代。")
+    hp_bar = create_hp_bar(pokemon["hp"], pokemon["max_hp"])
+
+    embed = discord.Embed(
+        title=f"{bot.get_user(int(user_id)).mention} のターン！",
+        description=f"**{pokemon['name']}** の技を選んでください。",
+        color=discord.Color.blue()
+    )
+    embed.set_image(url=pokemon["image"])  # 画像を追加
+    embed.add_field(name="🩸 HP", value=hp_bar, inline=False)
+    embed.add_field(name="🛠 技", value=moves, inline=False)
+
+    await ctx.send(embed=embed)
+
 
 @bot.command()
 async def use(ctx, move_name: str):
@@ -1002,9 +1012,21 @@ async def use(ctx, move_name: str):
     damage = get_skill_damage(move_name, attacker, defender)
     defender["hp"] = max(0, defender["hp"] - damage)
 
-    await ctx.send(f"{attacker['name']} の {move_name}！ {defender['name']} に {damage} ダメージ！\n"
-                   f"残りHP: {defender['hp']}/{defender['max_hp']}")
+    # HPバーを作成
+    hp_bar = create_hp_bar(defender["hp"], defender["max_hp"])
 
+    # 埋め込みメッセージの作成
+    embed = discord.Embed(
+        title=f"{attacker['name']} の {move_name}！",
+        description=f"{defender['name']} に {damage} ダメージ！",
+        color=discord.Color.red()
+    )
+    embed.set_image(url=attacker["image"])  # 攻撃側の画像を表示
+    embed.add_field(name="🩸 残りHP", value=hp_bar, inline=False)
+
+    await ctx.send(embed=embed)
+
+    # 倒れた場合の処理
     if defender["hp"] == 0:
         await ctx.send(f"{defender['name']} は倒れた！")
         next_pokemon = next((p for p in battle[opponent]["team"] if p["hp"] > 0), None)
@@ -1014,8 +1036,10 @@ async def use(ctx, move_name: str):
         battle[opponent]["active_pokemon"] = next_pokemon
         await ctx.send(f"{bot.get_user(int(battle[opponent]['id'])).mention} は {next_pokemon['name']} を繰り出した！")
 
+    # ターン切り替え
     battle["turn"] = opponent
     await start_turn(ctx, battle_id)
+
 
 @bot.command()
 async def switch(ctx, pokemon_name: str):
@@ -1064,6 +1088,19 @@ async def battle_timeout(ctx, battle_id):
     await asyncio.sleep(180)
     if battle_id in active_battles:
         await end_battle(ctx, battle_id)
+
+async def update_hp_display(ctx, pokemon):
+    hp_bar = create_hp_bar(pokemon["hp"], pokemon["max_hp"])
+
+    embed = discord.Embed(
+        title=f"{pokemon['name']} のHP",
+        color=discord.Color.green()
+    )
+    embed.set_image(url=pokemon["image"])
+    embed.add_field(name="🩸 HP", value=hp_bar, inline=False)
+
+    await ctx.send(embed=embed)
+
 
 @bot.event
 async def on_command_error(ctx, error):
