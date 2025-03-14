@@ -1015,18 +1015,18 @@ async def use(ctx, move_name: str):
     # HPバーを作成
     hp_bar = create_hp_bar(defender["hp"], defender["max_hp"])
 
-    # 埋め込みメッセージの作成
+    # **埋め込みメッセージの作成**
     embed = discord.Embed(
         title=f"{attacker['name']} の {move_name}！",
-        description=f"{defender['name']} に {damage} ダメージ！",
+        description=f"**{defender['name']}** に **{damage} ダメージ！**",
         color=discord.Color.red()
     )
-    embed.set_image(url=attacker["image"])  # 攻撃側の画像を表示
+    embed.set_image(url=defender["image"])  # **攻撃を受けた側のポケモンの画像を表示**
     embed.add_field(name="🩸 残りHP", value=hp_bar, inline=False)
 
     await ctx.send(embed=embed)
 
-    # 倒れた場合の処理
+    # **倒れた場合の処理**
     if defender["hp"] == 0:
         await ctx.send(f"{defender['name']} は倒れた！")
         next_pokemon = next((p for p in battle[opponent]["team"] if p["hp"] > 0), None)
@@ -1034,9 +1034,9 @@ async def use(ctx, move_name: str):
             await end_battle(ctx, battle_id, winner_id=battle[player]["id"])
             return
         battle[opponent]["active_pokemon"] = next_pokemon
-        await ctx.send(f"{bot.get_user(int(battle[opponent]['id'])).mention} は {next_pokemon['name']} を繰り出した！")
+        await ctx.send(f"{bot.get_user(int(battle[opponent]['id'])).mention} は **{next_pokemon['name']}** を繰り出した！")
 
-    # ターン切り替え
+    # **ターン切り替え**
     battle["turn"] = opponent
     await start_turn(ctx, battle_id)
 
