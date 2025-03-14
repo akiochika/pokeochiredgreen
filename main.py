@@ -8,6 +8,7 @@ from datetime import timedelta
 from discord.ext.commands import has_permissions, CheckFailure
 import time
 
+
 from skilllist import get_skill_damage  # 追加
 
 from flask import Flask
