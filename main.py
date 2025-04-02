@@ -19,4 +19,4 @@ async def tokumei(interaction: discord.Interaction, message: str):
     await interaction.channel.send(message)
 
 # Botトークンを入れて実行
-bot.run("YOUR_BOT_TOKEN")
+bot.run("DISCORD_TOKEN")
